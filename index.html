@@ -7,6 +7,74 @@ body {
   margin: 0;
   overflow: hidden;
 }
+
+@-webkit-keyframes rotate {
+  from { -webkit-transform: rotate(0deg); }
+  to { -webkit-transform: rotate(360deg); }
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  position: absolute;
+  width: 0;
+  height: 0;
+  top: 50%;
+  left: 50%;
+  margin-left: 0;
+  margin-top: 0;
+  opacity: 0;
+  border-top: 5px solid transparent;
+  border-radius: 100px;
+  -webkit-transform-origin: 50% 50%;
+  -webkit-animation-iteration-count: infinite;
+  -webkit-animation-timing-function: linear;
+  -webkit-animation-name: rotate;
+  transform-origin: 50% 50%;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+  animation-name: rotate;
+  transition-property: width, height, margin, opacity;
+  transition-duration: .5s;
+  transition-delay: .25s;
+}
+
+.spinner.red {
+  border-color: red;
+  -webkit-animation-duration: 1s;
+  animation-duration: 1s;
+}
+
+.spinner.green {
+  border-color: green;
+  -webkit-animation-duration: 1.1s;
+  animation-duration: 1.1s;
+}
+
+.spinner.blue {
+  border-color: blue;
+  -webkit-animation-duration: 1.2s;
+  animation-duration: 1.2s;
+}
+
+body.loading .spinner, body.loaded .spinner {
+  width: 80px;
+  height: 80px;
+  margin-left: -40px;
+  margin-top: -40px;
+}
+
+body.loading .spinner {
+  opacity: .4;
+}
+
+body.loaded .spinner {
+  transition-duration: .2s;
+  transition-delay: 0s;
+}
 </style>
 <script src="jquery-1.11.0.min.js"></script>
 <script src="underscore-1.6.0.js"></script>
@@ -186,6 +254,8 @@ _.extend(VoiceBox.prototype, {
 })
 
 $(function() {
+  $('body').addClass('loading')
+
   presenter = new Presenter({
     el: $('#pics'),
     width: $(window).width(),
@@ -205,6 +275,10 @@ $(function() {
     availPics = _.shuffle(pics)
 
     fillQueue = function() {
+      if (queue.length > queueUp) {
+        return
+      }
+
       var pic = availPics.pop()
       if (!pic) {
         return false
@@ -214,15 +288,12 @@ $(function() {
         if (!url) {
           return fillQueue()
         }
-        return presenter.preload(url)
-          .then(function() {
-            queue.push(url)
-          })
-          .always(function() {
-            if (queue.length < queueUp) {
-              return fillQueue()
-            }
-          })
+        return presenter.preload(url).then(function() {
+          queue.push(url)
+          return fillQueue()
+        }, function() {
+          return fillQueue()
+        })
       })
     }
 
@@ -256,6 +327,10 @@ $(function() {
     }
 
     $.when(fillQueue(), voiceboxReady).then(function() {
+      $('body').removeClass('loading').addClass('loaded')
+      setTimeout(function() {
+        $('.spinner').remove()
+      }, 500)
       interval = setInterval(frame, delay)
     })
   })
@@ -265,5 +340,8 @@ $(function() {
 <body>
 <div id="pics">
 </div>
+<div class="spinner red" class="rotating"></div>
+<div class="spinner green" class="rotating"></div>
+<div class="spinner blue" class="rotating"></div>
 </body>
 </html>
