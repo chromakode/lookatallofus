@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, user-scalable=no">
+<style>
+body {
+  margin: 0;
+  overflow: hidden;
+}
+
+#pics > img {
+  opacity: 0;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+}
+
+#pics > img.showing {
+  opacity: 1;
+}
+</style>
+<script src="jquery-1.11.0.min.js"></script>
+<script src="underscore-1.4.4.js"></script>
+<script>
+function getPics(pages, after) {
+  var url = 'https://pay.reddit.com/r/humanporn.json?limit=100'
+  if (after) {
+    url += '&after=' + after
+  }
+  return $.getJSON(url)
+    .then(function(resp) {
+      var urls = _.compact(_.map(resp['data']['children'], function(link) {
+        var url = link['data']['url']
+        if (/\.png$|\.jpg$/.test(url)) {
+          return url
+        } else if (/^https?:\/\/imgur.com/.test(url)) {
+          return url + '.jpg'
+        }
+      }))
+
+      var nextAfter = resp['data']['after']
+      if (pages > 1 && nextAfter) {
+        var def = new $.Deferred
+        setTimeout(function() {
+          getPics(pages - 1, nextAfter).then(function(nextUrls) {
+            def.resolve(urls.concat(nextUrls))
+          })
+        }, .5 * 1000)
+        return def
+      } else {
+        return urls
+      }
+    })
+}
+
+function choice(l) {
+  if (!l.length) {
+    return
+  }
+  return l[_.random(l.length - 1)]
+}
+
+var ctx = new (window.AudioContext || window.webkitAudioContext)
+
+var w = ctx.createWaveShaper()
+w.connect(ctx.destination)
+
+function updateDistortion(factor) {
+  console.log(factor)
+  n = 44100,
+  a = new Float32Array(n)
+  for (var i = 0; i < n; i += 1) {
+      var x = 2 * i / n - 1
+      var k = factor
+      a[i] = (Math.abs(x)/x || 0) * (1 + k) * (1-k/(Math.abs(x)+k))
+  }
+  w.curve = a
+}
+
+function getSample(url) {
+  var def = new $.Deferred
+  var request = new XMLHttpRequest()
+  request.open('GET', url, true)
+  request.responseType = 'arraybuffer'
+
+  // Decode asynchronously
+  request.onload = function() {
+    ctx.decodeAudioData(request.response, function(buffer) {
+      def.resolve(buffer)
+    })
+  }
+  request.send()
+  return def
+}
+
+function playSample(buffer) {
+  var gain = ctx.createGain()
+  gain.gain.value = .5
+  var source = ctx.createBufferSource()
+  source.buffer = buffer
+  source.connect(gain)
+  gain.connect(w)
+  source.start(0)
+}
+
+$(function() {
+  var $pics = $('#pics')
+  $.when(getPics(1), getSample('chord.wav')).then(function(urls, chord) {
+    _.each(urls, function(url) {
+      $('<img>')
+        .attr('src', url)
+        .appendTo($pics)
+        .on('error', function() {
+          $(this).remove()
+        })
+    })
+
+    var total = $('#pics > img').length
+    function nextPic() {
+      $('#pics > img.showing').remove()
+      var $pics = $('#pics > img')
+      if (!$pics.length) {
+        clearInterval(interval)
+        return
+      }
+      var $pic = $(choice($pics))
+
+      if ($pics.length > 2) {
+        playSample(chord)
+      }
+
+      var width = $pic.width()
+      var height = $pic.height()
+      if (width > height) {
+        $pic.css('height', '100%')
+      } else {
+        $pic.css('width', '100%')
+      }
+      var width = $pic.width()
+      var height = $pic.height()
+      $pic.css('margin-left', -width/2)
+      $pic.css('margin-top', -height/2)
+      $pic.addClass('showing')
+
+      _.defer(function() {
+        updateDistortion(.05 + Math.pow($pics.length / total, 2))
+      })
+    }
+
+    var interval = setInterval(nextPic, .824 * 1000)
+  })
+})
+</script>
+</head>
+<body>
+<div id="pics">
+</div>
+</body>
+</html>
