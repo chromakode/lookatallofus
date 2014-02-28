@@ -7,147 +7,257 @@ body {
   margin: 0;
   overflow: hidden;
 }
-
-#pics > img {
-  opacity: 0;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-}
-
-#pics > img.showing {
-  opacity: 1;
-}
 </style>
 <script src="jquery-1.11.0.min.js"></script>
-<script src="underscore-1.4.4.js"></script>
+<script src="underscore-1.6.0.js"></script>
 <script>
-function getPics(pages, after) {
-  var url = 'https://pay.reddit.com/r/humanporn.json?limit=100'
-  if (after) {
-    url += '&after=' + after
-  }
-  return $.getJSON(url)
-    .then(function(resp) {
-      var urls = _.compact(_.map(resp['data']['children'], function(link) {
-        var url = link['data']['url']
-        if (/\.png$|\.jpg$/.test(url)) {
-          return url
-        } else if (/^https?:\/\/imgur.com/.test(url)) {
-          return url + '.jpg'
+var Gallery = {
+  list: function (pages, after) {
+    var url = 'http://www.reddit.com/r/humanporn.json?limit=100'
+    if (after) {
+      url += '&after=' + after
+    }
+    var self = this
+    return $.getJSON(url)
+      .then(function(listResp) {
+        var things = _.map(listResp['data']['children'], function(thingResp) {
+          return thingResp['data']
+        })
+
+        var nextAfter = listResp['data']['after']
+        if (pages > 1 && nextAfter) {
+          var deferred = new $.Deferred
+          setTimeout(function() {
+            self.list(pages - 1, nextAfter).then(function(nextThings) {
+              deferred.resolve(things.concat(nextThings))
+            })
+          }, .5 * 1000)
+          return deferred
+        } else {
+          return things
         }
-      }))
+      })
+  },
 
-      var nextAfter = resp['data']['after']
-      if (pages > 1 && nextAfter) {
-        var def = new $.Deferred
-        setTimeout(function() {
-          getPics(pages - 1, nextAfter).then(function(nextUrls) {
-            def.resolve(urls.concat(nextUrls))
-          })
-        }, .5 * 1000)
-        return def
+  resolve: function(thing) {
+    var url = thing['url']
+    // strip query and hash
+    url = url.replace(/(\?|#).*/, '')
+    if (/\.png$|\.jpg$|\.jpeg$/.test(url)) {
+      return $.when(url)
+    } else if (/^https?:\/\/imgur.com/.test(url) && !/\/gallery\//.test(url)) {
+      return $.when(url + '.jpg')
+    } else if (/^https?:\/\/www.flickr.com/.test(url)) {
+      var photoId = url.match(/\/(\d+)\//)[1]
+      return $.getJSON('http://api.flickr.com/services/rest/?method=flickr.photos.getSizes'
+                      +'&api_key=de370f19724780b33f1dfe2519283008&format=json&nojsoncallback=1'
+                      +'&photo_id=' + photoId)
+        .then(function(resp) {
+            if (!resp.stat == 'ok') {
+              return false
+            }
+            return _.chain(resp.sizes.size)
+              .sortBy(function(size) {
+                return Number(size.height)
+              })
+              .reverse()
+              .find(function(size) {
+                if (size['height'] < 2048) {
+                  return size['source']
+                }
+              })
+              .value()['source']
+        })
+    } else {
+      console.warn('Couldn\'t resolve: %s', url, thing)
+      return $.when(null)
+    }
+  }
+}
+
+Presenter = function(options) {
+  this.width = options.width
+  this.height = options.height
+  this.$container = $(options.el)
+  this.$container.css({
+    width: this.width,
+    height: this.height
+  })
+  this.$index = {}
+  this._showing = null
+}
+_.extend(Presenter.prototype, {
+  preload: function(url) {
+    // load image and pre-scale to canvas for fast display
+    var deferred = new $.Deferred
+    var $canvas = $('<canvas>').attr({
+      width: this.width,
+      height: this.height
+    })
+    $canvas.hide().appendTo(this.$container)
+    var canvasCtx = $canvas[0].getContext('2d')
+    var img = new Image()
+    img.onload = _.bind(function() {
+      var x, y, width, height
+      if (img.width > img.height) {
+        var x = 0
+        var width = this.width
+        var height = img.height * (this.width / img.width)
+        var y = (this.height - height) / 2
       } else {
-        return urls
+        var y = 0
+        var height = this.height
+        var width = img.width * (this.height / img.height)
+        var x = (this.width - width) / 2
       }
-    })
-}
+      canvasCtx.drawImage(img, x, y, width, height)
+      this.$index[url] = $canvas
+      deferred.resolve($canvas)
+    }, this)
+    img.onerror = function() {
+      deferred.reject()
+    }
+    img.src = url
+    return deferred
+  },
 
-function choice(l) {
-  if (!l.length) {
-    return
+  hide: function() {
+    if (this._showing) {
+      this._showing.hide()
+    }
+  },
+
+  show: function(url) {
+    this.hide()
+    var $canvas = this.$index[url]
+    if (!$canvas) {
+      return false
+    }
+    $canvas.show()
+    this._showing = $canvas
   }
-  return l[_.random(l.length - 1)]
+})
+
+VoiceBox = function() {
+  var ctx = this.ctx = new (window.AudioContext || window.webkitAudioContext)
+  this.samples = {}
+  this.nodes = {}
+  var distort = this.nodes.distort = ctx.createWaveShaper()
+  distort.connect(ctx.destination)
 }
+_.extend(VoiceBox.prototype, {
+  load: function(url) {
+    var deferred = new $.Deferred
+    var request = new XMLHttpRequest()
+    request.open('GET', url, true)
+    request.responseType = 'arraybuffer'
+    var self = this
+    request.onload = function() {
+      self.ctx.decodeAudioData(request.response, function(buffer) {
+        self.samples[url] = buffer
+        deferred.resolve(buffer)
+      })
+    }
+    request.send()
+    return deferred
+  },
 
-var ctx = new (window.AudioContext || window.webkitAudioContext)
+  play: function(url) {
+    var buffer = this.samples[url]
+    var gain = this.ctx.createGain()
+    gain.gain.value = .5
+    var source = this.ctx.createBufferSource()
+    source.buffer = buffer
+    source.connect(gain)
+    gain.connect(this.nodes.distort)
+    source.start(0)
+  },
 
-var w = ctx.createWaveShaper()
-w.connect(ctx.destination)
-
-function updateDistortion(factor) {
-  console.log(factor)
-  n = 44100,
-  a = new Float32Array(n)
-  for (var i = 0; i < n; i += 1) {
-      var x = 2 * i / n - 1
-      var k = factor
-      a[i] = (Math.abs(x)/x || 0) * (1 + k) * (1-k/(Math.abs(x)+k))
+  setDistortion: function(factor) {
+    var n = 44100
+    var a = new Float32Array(n)
+    for (var i = 0; i < n; i += 1) {
+        var x = 2 * i / n - 1
+        var k = factor
+        a[i] = (Math.abs(x)/x || 0) * (1 + k) * (1-k/(Math.abs(x)+k))
+    }
+    this.nodes.distort.curve = a
   }
-  w.curve = a
-}
-
-function getSample(url) {
-  var def = new $.Deferred
-  var request = new XMLHttpRequest()
-  request.open('GET', url, true)
-  request.responseType = 'arraybuffer'
-
-  // Decode asynchronously
-  request.onload = function() {
-    ctx.decodeAudioData(request.response, function(buffer) {
-      def.resolve(buffer)
-    })
-  }
-  request.send()
-  return def
-}
-
-function playSample(buffer) {
-  var gain = ctx.createGain()
-  gain.gain.value = .5
-  var source = ctx.createBufferSource()
-  source.buffer = buffer
-  source.connect(gain)
-  gain.connect(w)
-  source.start(0)
-}
+})
 
 $(function() {
-  var $pics = $('#pics')
-  $.when(getPics(1), getSample('chord.wav')).then(function(urls, chord) {
-    _.each(urls, function(url) {
-      $('<img>')
-        .attr('src', url)
-        .appendTo($pics)
-        .on('error', function() {
-          $(this).remove()
-        })
-    })
+  presenter = new Presenter({
+    el: $('#pics'),
+    width: $(window).width(),
+    height: $(window).height()
+  })
 
-    var total = $('#pics > img').length
-    function nextPic() {
-      $('#pics > img.showing').remove()
-      var $pics = $('#pics > img')
-      if (!$pics.length) {
-        clearInterval(interval)
-        return
+  voicebox = new VoiceBox
+  var voiceboxReady = voicebox.load('chord.ogg')
+
+  queue = []
+  var queueUp = 5
+  var pages = 1
+  var delay = .824 * 1000
+
+  Gallery.list(pages).then(function(things) {
+    pics = things
+    availPics = _.shuffle(pics)
+
+    fillQueue = function() {
+      var pic = availPics.pop()
+      if (!pic) {
+        return false
       }
-      var $pic = $(choice($pics))
 
-      if ($pics.length > 2) {
-        playSample(chord)
-      }
-
-      var width = $pic.width()
-      var height = $pic.height()
-      if (width > height) {
-        $pic.css('height', '100%')
-      } else {
-        $pic.css('width', '100%')
-      }
-      var width = $pic.width()
-      var height = $pic.height()
-      $pic.css('margin-left', -width/2)
-      $pic.css('margin-top', -height/2)
-      $pic.addClass('showing')
-
-      _.defer(function() {
-        updateDistortion(.05 + Math.pow($pics.length / total, 2))
+      return Gallery.resolve(pic).then(function(url) {
+        if (!url) {
+          return fillQueue()
+        }
+        return presenter.preload(url)
+          .then(function() {
+            queue.push(url)
+          })
+          .always(function() {
+            if (queue.length < queueUp) {
+              return fillQueue()
+            }
+          })
       })
     }
 
-    var interval = setInterval(nextPic, .824 * 1000)
+    if (window.location.hash == '#dev') {
+      return
+    }
+
+    stop = function() {
+      clearInterval(interval)
+    }
+
+    finish = function() {
+      presenter.hide()
+    }
+
+    function frame() {
+      var done = !fillQueue()
+      if (!queue.length && done) {
+        finish()
+        stop()
+        return
+      }
+
+      if (queue.length > 2) {
+        voicebox.play('chord.ogg')
+      }
+      presenter.show(queue.pop())
+      _.defer(function() {
+        voicebox.setDistortion(.05 + Math.pow((availPics.length + queue.length) / pics.length, 2))
+      })
+    }
+
+    $.when(fillQueue(), voiceboxReady).then(function() {
+      interval = setInterval(frame, delay)
+    })
   })
 })
 </script>
