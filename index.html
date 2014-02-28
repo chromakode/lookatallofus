@@ -2,10 +2,76 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, user-scalable=no">
+<link href="http://fonts.googleapis.com/css?family=Actor" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=Cinzel" rel="stylesheet" type="text/css">
 <style>
 body {
   margin: 0;
   overflow: hidden;
+}
+
+#credits {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  margin: auto;
+  width: 80%;
+  height: 66%;
+  font-family: 'Actor';
+  font-size: 16px;
+  color: #555;
+  opacity: 0;
+  transition: all .25s ease;
+}
+
+#credits.showing {
+  opacity: 1;
+}
+
+#credits h1 {
+  font-family: 'Cinzel';
+}
+
+#credits h2 {
+  margin-top: 26px;
+  margin-bottom: .5em;
+  font-size: 14px;
+  color: #bbb;
+}
+
+#credits h2 a {
+  color: #999;
+}
+
+#credits h2:first-child {
+  margin-top: 0;
+}
+
+#credits p {
+  margin: .5em 0;
+}
+
+#credits a {
+  text-decoration: none;
+  color: #555;
+}
+
+#credits a:hover {
+  text-decoration: underline;
+}
+
+#credits .users {
+  margin: 0;
+  padding: 0;
+}
+
+#credits .users li {
+  list-style: none;
+  display: inline-block;
+  margin-right: 5px;
+  font-size: 14px;
 }
 
 @-webkit-keyframes rotate {
@@ -253,6 +319,17 @@ _.extend(VoiceBox.prototype, {
   }
 })
 
+function renderCredits() {
+  _.each(pics, function(pic) {
+    $('<a>')
+      .text(pic['author'])
+      .attr('href', 'http://www.reddit.com' + pic['permalink'])
+      .attr('title', pic['title'])
+      .attr('target', '_blank')
+      .appendTo($('<li>').appendTo('#credits .users'))
+  })
+}
+
 $(function() {
   $('body').addClass('loading')
 
@@ -297,16 +374,16 @@ $(function() {
       })
     }
 
-    if (window.location.hash == '#dev') {
-      return
-    }
-
     stop = function() {
       clearInterval(interval)
     }
 
     finish = function() {
       presenter.hide()
+      setTimeout(function() {
+        renderCredits()
+        $('#credits').addClass('showing')
+      }, delay * 2)
     }
 
     function frame() {
@@ -343,5 +420,14 @@ $(function() {
 <div class="spinner red" class="rotating"></div>
 <div class="spinner green" class="rotating"></div>
 <div class="spinner blue" class="rotating"></div>
+<div id="credits">
+  <h1>Go out and play.</h1>
+  <h2>images submitted to <a href="http://www.reddit.com">reddit</a> by</h2>
+  <ul class="users">
+  </ul>
+  <p>photos are the property of their respective owners.</p>
+  <h2>source code</h2>
+  <p><a href="https://github.com/chromakode/lookatallofus" target="_blank">github.com/chromakode/lookatallofus</a></p>
+</div>
 </body>
 </html>
