@@ -189,7 +189,7 @@ var Gallery = {
                       +'&api_key=de370f19724780b33f1dfe2519283008&format=json&nojsoncallback=1'
                       +'&photo_id=' + photoId)
         .then(function(resp) {
-            if (!resp.stat == 'ok') {
+            if (resp.stat != 'ok') {
               return false
             }
             return _.chain(resp.sizes.size)
