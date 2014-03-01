@@ -148,8 +148,8 @@ body.loaded .spinner {
 <script src="underscore-1.6.0.min.js"></script>
 <script>
 var Gallery = {
-  list: function (pages, after) {
-    var url = 'http://www.reddit.com/r/humanporn.json?limit=100'
+  list: function (subreddit, pages, after) {
+    var url = 'http://www.reddit.com/r/' + subreddit + '.json?limit=100'
     if (after) {
       url += '&after=' + after
     }
@@ -164,7 +164,7 @@ var Gallery = {
         if (pages > 1 && nextAfter) {
           var deferred = new $.Deferred
           setTimeout(function() {
-            self.list(pages - 1, nextAfter).then(function(nextThings) {
+            self.list(subreddit, pages - 1, nextAfter).then(function(nextThings) {
               deferred.resolve(things.concat(nextThings))
             })
           }, .5 * 1000)
@@ -349,7 +349,8 @@ $(function() {
   var pages = 1
   var delay = .824 * 1000
 
-  Gallery.list(pages).then(function(things) {
+  var subreddit = location.hash == '#earth' ? 'earthporn' : 'humanporn'
+  Gallery.list(subreddit, pages).then(function(things) {
     pics = things
     availPics = _.shuffle(pics)
 
