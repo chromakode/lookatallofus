@@ -185,7 +185,7 @@ var Gallery = {
       return $.when(url + '.jpg')
     } else if (/^https?:\/\/www.flickr.com/.test(url)) {
       var photoId = url.match(/\/(\d+)\//)[1]
-      return $.getJSON('http://api.flickr.com/services/rest/?method=flickr.photos.getSizes'
+      return $.getJSON('https://api.flickr.com/services/rest/?method=flickr.photos.getSizes'
                       +'&api_key=de370f19724780b33f1dfe2519283008&format=json&nojsoncallback=1'
                       +'&photo_id=' + photoId)
         .then(function(resp) {
